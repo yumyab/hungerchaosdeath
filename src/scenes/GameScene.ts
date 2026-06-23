@@ -502,10 +502,12 @@ export default class GameScene extends Phaser.Scene {
         y: { min: -150, max: H + 150 },
         speedX: { min: -8, max: 8 },
         speedY: { min: -5, max: 5 },
-        lifespan: 20000,
-        scale: { min: 0.7, max: 1.7 },
-        alpha: { start: 0.5, end: 0.5 },
-        frequency: 280,
+        lifespan: 18000,
+        // Big, heavily overlapping blobs (300px texture x 1.8-3.8 ~= 540-1140px)
+        // so the mist reads as continuous fog rather than small puffs.
+        scale: { min: 1.8, max: 3.8 },
+        alpha: { start: 0.55, end: 0.55 },
+        frequency: 360,
         quantity: 1,
       })
       .setDepth(820);
