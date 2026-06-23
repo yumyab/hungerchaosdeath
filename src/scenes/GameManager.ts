@@ -29,14 +29,14 @@ export default class GameManager {
 
   private initialCreatures = 3; // day 1 starts with this many; later days carry survivors
   private huntersPerLevel = 1; // hunters spawned at the start of each day
-  private initialFoliage = 250;
-  private regularLevelFoliage = 200;
+  private initialFoliage = 50;
+  private regularLevelFoliage = 50;
   // Ongoing plant spawning during a level. Amount of 0 turns it off. While it
   // is on, the field never empties, so levels advance via the button.
-  private foliageSpawnAmount = 5;
+  private foliageSpawnAmount = 1;
   private foliageSpawnRateMs = 800;
   private maxFoliage = 400; // cap so the field can't grow without bound
-  private maxCreatures = 300; // cap on the flock so breeding can't tank the framerate
+  private maxCreatures = 999; // cap on the flock so breeding can't tank the framerate
   // Optional master size: 0 = off; when > 0 it sets every entity/grid size to
   // base * scale. Editing any dependent size individually turns it off again.
   private overallScale = 0;
@@ -47,19 +47,17 @@ export default class GameManager {
   // Speeds are pixels per second. Hunters are a touch faster than an unfed
   // creature, so a creature can't simply outrun one in a straight line: it has
   // to use its head start (fear radius) to reach a home, or eat to get quicker.
-  private hunterSpeed = 120;
-  private hunterSize = 32;
+  private hunterSpeed = 150;
+  private hunterSize = 42;
   private hunterFearRadius = 140;
   private creatureSpeed = 110;
   private creatureSize = 32;
-  private creatureReproduceThreshold = 3;
-  private creatureEatingDuration = 450;
-  // Each plant eaten adds this, but a fed creature is capped just BELOW the
-  // hunter speed (120) so eating gives an edge without ever outrunning a
-  // predator outright. Prey escape via their head start and the homes.
-  private creatureSpeedIncrement = 12;
-  private creatureMaxSpeed = 116;
-  private creatureReproduceRange: [number, number] = [1, 1];
+  private creatureReproduceThreshold = 2;
+  private creatureEatingDuration = 1000;
+  // Each plant eaten adds this toward the creature's max speed.
+  private creatureSpeedIncrement = 2;
+  private creatureMaxSpeed = 200;
+  private creatureReproduceRange: [number, number] = [0, 3];
   // A newborn hunter can't kill for this long after spawning.
   private hunterSpawnGraceMs = 700;
   private foliageSize = 32;
@@ -171,22 +169,22 @@ export default class GameManager {
     }
     this.initialCreatures = 3;
     this.huntersPerLevel = 1;
-    this.initialFoliage = 250;
-    this.regularLevelFoliage = 200;
-    this.foliageSpawnAmount = 5;
+    this.initialFoliage = 50;
+    this.regularLevelFoliage = 50;
+    this.foliageSpawnAmount = 1;
     this.foliageSpawnRateMs = 800;
     this.maxFoliage = 400;
-    this.maxCreatures = 300;
-    this.hunterSpeed = 120;
-    this.hunterSize = 32;
+    this.maxCreatures = 999;
+    this.hunterSpeed = 150;
+    this.hunterSize = 42;
     this.hunterFearRadius = 140;
     this.creatureSpeed = 110;
     this.creatureSize = 32;
-    this.creatureReproduceThreshold = 3;
-    this.creatureEatingDuration = 450;
-    this.creatureSpeedIncrement = 12;
-    this.creatureMaxSpeed = 116;
-    this.creatureReproduceRange = [1, 1];
+    this.creatureReproduceThreshold = 2;
+    this.creatureEatingDuration = 1000;
+    this.creatureSpeedIncrement = 2;
+    this.creatureMaxSpeed = 200;
+    this.creatureReproduceRange = [0, 3];
     this.hunterSpawnGraceMs = 700;
     this.foliageSize = 32;
     this.homeSize = 64;
