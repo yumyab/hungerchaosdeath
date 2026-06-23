@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="style.css" />
+    <link href="https://fonts.cdnfonts.com/css/olde-english" rel="stylesheet" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&family=UnifrakturCook:wght@700&display=swap"
+      rel="stylesheet"
+    />
+    <title>Hunger</title>
+  </head>
+
+  <body>
+    <div id="app">
+      <div id="topbar">
+        <div id="hud">
+          <span id="hud-level" class="hud-day">Day 1</span>
+          <span class="hud-sep">&bull;</span>
+          <span id="hud-creatures" class="hud-creatures">Creatures 0</span>
+          <span id="hud-hunters" class="hud-hunters">Hunters 0</span>
+          <span id="hud-plants" class="hud-plants">Plants 0</span>
+          <span class="hud-sep">&bull;</span>
+          <span id="hud-survived" class="hud-survived">Survived 0</span>
+          <span id="hud-eaten" class="hud-eaten">Eaten 0</span>
+        </div>
+        <span id="topbar-title">Hunger. Chaos. Death.</span>
+        <div id="controls">
+          <button id="btn-vol" class="bar-btn">vol: 100</button>
+          <button id="btn-audio" class="bar-btn">audio: on</button>
+          <button id="btn-next" class="bar-btn">next day</button>
+          <button id="btn-restart" class="bar-btn">restart</button>
+          <button id="btn-options" class="bar-btn">options</button>
+          <button id="btn-stats" class="bar-btn">stats</button>
+          <button id="btn-config" class="bar-btn">config</button>
+        </div>
+        <!-- Oxblood drip effect, disabled for now.
+        <div id="blood-drip" aria-hidden="true">
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        </div>
+        -->
+
+      </div>
+      <div id="game-container"></div>
+    </div>
+
+    <div id="options-panel" hidden>
+      <div class="config-inner">
+        <div class="config-head">
+          <span>Options</span>
+          <button id="options-close" class="bar-btn">close</button>
+        </div>
+        <p class="config-note">The eerie mood, effect by effect. Saved.</p>
+        <div id="options-rows"></div>
+      </div>
+    </div>
+
+    <div id="stats-panel" hidden>
+      <div class="config-inner">
+        <div class="config-head">
+          <span>Stats</span>
+          <button id="stats-close" class="bar-btn">close</button>
+        </div>
+        <p class="config-note">Tracked locally on this device.</p>
+        <div id="stats-rows"></div>
+      </div>
+    </div>
+
+    <div id="config-panel" hidden>
+      <div class="config-inner">
+        <div class="config-head">
+          <span>Config</span>
+          <button id="config-close" class="bar-btn">close</button>
+        </div>
+        <p class="config-note">
+          Edits apply live (counts take effect next level) and are saved.
+        </p>
+        <div id="config-rows"></div>
+        <div class="config-foot">
+          <button id="config-reset" class="bar-btn">reset to defaults</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
