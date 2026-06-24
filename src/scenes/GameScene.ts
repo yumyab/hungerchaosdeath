@@ -351,13 +351,13 @@ export default class GameScene extends Phaser.Scene {
     const hu = document.getElementById("hud-hunters");
     const pl = document.getElementById("hud-plants");
     if (cr) {
-      cr.textContent = `Creatures ${this.creatures.countActive()}`;
+      cr.textContent = `${this.creatures.countActive()} Creatures`;
     }
     if (hu) {
-      hu.textContent = `Hunters ${this.hunters.countActive()}`;
+      hu.textContent = `${this.hunters.countActive()} Hunters`;
     }
     if (pl) {
-      pl.textContent = `Plants ${this.foliage.countActive()}`;
+      pl.textContent = `${this.foliage.countActive()} Plants`;
     }
     // Flush the cumulative stats here too (cheap, already throttled to 4x/sec).
     this.saveStats();
@@ -930,7 +930,7 @@ export default class GameScene extends Phaser.Scene {
       this.endSubText = this.subtitle(
         `the ${this.ordinal(this.level)} day ends   ` +
           `the ${this.ordinal(this.level + 1)} day begins\n` +
-          `survived ${this.survivedThisLevel}   eaten ${this.eatenThisLevel}`
+          `${this.survivedThisLevel} survived   ${this.eatenThisLevel} eaten`
       );
       // Night falls as the day ends, then lifts to dawn as the next day begins.
       this.fadeNight(0.78, 2000);
@@ -946,7 +946,7 @@ export default class GameScene extends Phaser.Scene {
       this.showEnd("DEATH", false);
       this.endSubText = this.subtitle(
         `the ${this.ordinal(this.level)} day\n` +
-          `best day ${this.bestDay}   total survived ${this.totalSurvived}`
+          `best ${this.ordinal(this.bestDay)} day   ${this.totalSurvived} total survived`
       );
       this.time.delayedCall(4200, this.restartGame, [], this);
     }
@@ -1036,13 +1036,13 @@ export default class GameScene extends Phaser.Scene {
     const surv = document.getElementById("hud-survived");
     const eaten = document.getElementById("hud-eaten");
     if (lvl) {
-      lvl.textContent = `Day ${this.level}`;
+      lvl.textContent = `${this.ordinal(this.level)} Day`;
     }
     if (surv) {
-      surv.textContent = `Survived ${this.survivedThisLevel}`;
+      surv.textContent = `${this.survivedThisLevel} Survived`;
     }
     if (eaten) {
-      eaten.textContent = `Eaten ${this.eatenThisLevel}`;
+      eaten.textContent = `${this.eatenThisLevel} Eaten`;
     }
   }
 
