@@ -162,11 +162,17 @@ export class Creature extends Phaser.Physics.Arcade.Sprite {
     // cached target is still checked every frame, so reactions stay responsive.
     if (now >= this.nextThink) {
       this.nearestHunter = getNearestEntity<Hunter>(gameScene.hunters, this) ?? null;
-      this.targetFoliage = getNearestEntity<Foliage>(gameScene.foliage, this) ?? null;
+      this.targetFoliage = this.pickFoliage(gameScene);
       this.nextThink = now + 130 + Phaser.Math.Between(0, 90);
-    } else if (this.targetFoliage && !this.targetFoliage.active) {
-      // The plant we were heading for got eaten — pick a new one now.
-      this.targetFoliage = getNearestEntity<Foliage>(gameScene.foliage, this) ?? null;
+    } else if (
+      this.targetFoliage &&
+      (!this.targetFoliage.active ||
+        (this.targetFoliage.claimed && this.targetFoliage !== this.eatingFoliage))
+    ) {
+      // The plant we were heading for got eaten, or another creature claimed it
+      // first — pick a fresh, unclaimed one now so the flock spreads out instead
+      // of stacking on a single plant.
+      this.targetFoliage = this.pickFoliage(gameScene);
     }
 
     // Threat check runs every frame and overrides everything else.
@@ -239,6 +245,22 @@ export class Creature extends Phaser.Physics.Arcade.Sprite {
       return;
     }
     body.setVelocity(0, 0);
+  }
+
+  // Nearest unclaimed plant, so freshly-born creatures fan out to different
+  // plants instead of stacking on the one nearest plant. Falls back to the
+  // nearest plant of any kind when every nearby plant is already claimed, so a
+  // creature still roams toward food rather than freezing.
+  private pickFoliage(gameScene: GameScene): Foliage | null {
+    return (
+      getNearestEntity<Foliage>(
+        gameScene.foliage,
+        this,
+        (f) => f.active && !f.claimed
+      ) ??
+      getNearestEntity<Foliage>(gameScene.foliage, this) ??
+      null
+    );
   }
 
   private moveDirect(tx: number, ty: number): void {

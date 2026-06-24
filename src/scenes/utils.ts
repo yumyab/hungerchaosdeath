@@ -43,13 +43,17 @@ export function getRandomSpawnPoint(
 
 export function getNearestEntity<T extends Phaser.GameObjects.Sprite>(
   entities: Phaser.GameObjects.Group,
-  source: Phaser.GameObjects.Sprite
+  source: Phaser.GameObjects.Sprite,
+  accept?: (entity: T) => boolean
 ): T | undefined {
   let nearestEntity: T | undefined;
   let minDistance = Infinity;
 
   const entitiesArray = entities.getChildren() as T[];
   for (const entity of entitiesArray) {
+    if (accept && !accept(entity)) {
+      continue;
+    }
     const distance = Phaser.Math.Distance.Between(
       source.x,
       source.y,
