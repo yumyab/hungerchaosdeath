@@ -45,8 +45,9 @@ export default class GameManager {
   private foliageDrag = 0.4;
   // 0/1: when on, grid-walkers (hunters chasing, creatures fleeing/homing) never
   // phase straight through plants. With no route they hold still and wait for a
-  // gap, which opens as grazing creatures eat the foliage away.
-  private gridStrictMovement = 0;
+  // gap, which opens as grazing creatures eat the foliage away. On by default:
+  // grazers always eat, so paths reliably reopen.
+  private gridStrictMovement = 1;
   private maxCreatures = 999; // cap on the flock so breeding can't tank the framerate
   // Optional master size: 0 = off; when > 0 it sets every entity/grid size to
   // base * scale. Editing any dependent size individually turns it off again.
@@ -191,7 +192,7 @@ export default class GameManager {
     this.foliageSpawnRateMs = 800;
     this.maxFoliage = 400;
     this.foliageDrag = 0.4;
-    this.gridStrictMovement = 0;
+    this.gridStrictMovement = 1;
     this.maxCreatures = 999;
     this.hunterSpeed = 150;
     this.hunterSize = 42;
