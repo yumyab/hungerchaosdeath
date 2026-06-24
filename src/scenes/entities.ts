@@ -1,7 +1,12 @@
 import Phaser from "phaser";
 import GameScene from "./GameScene";
 import GameManager from "./GameManager";
-import { findPath, getNearestEntity, getRandomSpawnPoint } from "./utils";
+import {
+  findPath,
+  getNearestEntity,
+  getRandomSpawnPoint,
+  lineBlocked,
+} from "./utils";
 import { dlog } from "./debug";
 
 type Waypoint = { x: number; y: number };
@@ -25,6 +30,10 @@ type PathMover = Phaser.Physics.Arcade.Sprite & {
   goalKey: string;
   computing: boolean;
   speed: number;
+  // True when the last route decision was "clear straight shot" (no A* needed),
+  // distinct from "no route exists" (empty path). Lets strict mode tell a clear
+  // line from a genuine block.
+  directOk: boolean;
 };
 
 // Continuous-velocity path following. We still route with easystar (so placed
@@ -47,21 +56,23 @@ function steer(
       mover.path.length === 0 ||
       now >= mover.repathAt)
   ) {
-    mover.computing = true;
     mover.goalKey = goalKey;
     mover.repathAt = now + 300;
-    findPath(
-      scene,
-      mover.x,
-      mover.y,
-      goalX,
-      goalY,
-      scene.getPathGrid(),
-      (path) => {
+    const grid = scene.getPathGrid();
+    const gridSize = GameManager.getInstance().getGridSize();
+    // Clear straight shot? Skip A* entirely (the common case in open field) and
+    // just drive at the goal. This removes the bulk of pathfinding work.
+    if (!scene.noOpt && !lineBlocked(mover.x, mover.y, goalX, goalY, grid, gridSize)) {
+      mover.path = [];
+      mover.directOk = true;
+    } else {
+      mover.computing = true;
+      mover.directOk = false;
+      findPath(scene, mover.x, mover.y, goalX, goalY, grid, (path) => {
         mover.path = path;
         mover.computing = false;
-      }
-    );
+      });
+    }
   }
 
   // Drop waypoints we have effectively reached.
@@ -80,12 +91,13 @@ function steer(
   const body = mover.body as Phaser.Physics.Arcade.Body;
   const hasPath = mover.path.length > 0;
 
-  // Strict grid mode: a hunter with no route holds position and waits for a gap
-  // (grazers eat the foliage away) instead of phasing across. Creatures never
-  // wait — a fleeing or homing creature must keep moving (it falls back to a
-  // slow phase below), so creatures never stall.
+  // Strict grid mode: a hunter with no route at all (no path AND no clear shot)
+  // holds position and waits for a gap (grazers eat the foliage away) instead of
+  // phasing across. Creatures never wait — a fleeing or homing creature must keep
+  // moving (it falls back to a slow phase below), so creatures never stall.
   if (
     !hasPath &&
+    !mover.directOk &&
     goalKey === "chase" &&
     GameManager.getInstance().getGridStrictMovement()
   ) {
@@ -138,6 +150,7 @@ export class Creature extends Phaser.Physics.Arcade.Sprite {
   public repathAt = 0;
   public goalKey = "";
   public computing = false;
+  public directOk = false;
 
   constructor(
     scene: GameScene,
@@ -183,7 +196,7 @@ export class Creature extends Phaser.Physics.Arcade.Sprite {
     // per creature), then reuse the cached targets in between. The distance to a
     // cached target is still checked every frame, so reactions stay responsive.
     if (now >= this.nextThink) {
-      this.nearestHunter = getNearestEntity<Hunter>(gameScene.hunters, this) ?? null;
+      this.nearestHunter = gameScene.nearestHunter(this.x, this.y) ?? null;
       this.targetFoliage = this.pickFoliage(gameScene);
       this.nextThink = now + 130 + Phaser.Math.Between(0, 90);
     } else if (
@@ -217,9 +230,9 @@ export class Creature extends Phaser.Physics.Arcade.Sprite {
       // the target so the creature drifts home instead of sitting forever.
       const current = this.targetFoliage;
       this.targetFoliage =
-        getNearestEntity<Foliage>(
-          gameScene.foliage,
-          this,
+        gameScene.nearestFoliage(
+          this.x,
+          this.y,
           (f) => f.active && !f.claimed && f !== current
         ) ?? null;
       this.nextThink = now + 130 + Phaser.Math.Between(0, 90);
@@ -306,12 +319,8 @@ export class Creature extends Phaser.Physics.Arcade.Sprite {
   // creature still roams toward food rather than freezing.
   private pickFoliage(gameScene: GameScene): Foliage | null {
     return (
-      getNearestEntity<Foliage>(
-        gameScene.foliage,
-        this,
-        (f) => f.active && !f.claimed
-      ) ??
-      getNearestEntity<Foliage>(gameScene.foliage, this) ??
+      gameScene.nearestFoliage(this.x, this.y, (f) => f.active && !f.claimed) ??
+      gameScene.nearestFoliage(this.x, this.y) ??
       null
     );
   }
@@ -498,6 +507,7 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
   public repathAt = 0;
   public goalKey = "";
   public computing = false;
+  public directOk = false;
   private targetCreature: Creature | null = null;
   private nextThink = 0;
 
@@ -528,8 +538,7 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
       !this.targetCreature ||
       !this.targetCreature.active
     ) {
-      this.targetCreature =
-        getNearestEntity<Creature>(gameScene.creatures, this) ?? null;
+      this.targetCreature = gameScene.nearestCreature(this.x, this.y) ?? null;
       this.nextThink = now + 130 + Phaser.Math.Between(0, 90);
     }
     if (!this.targetCreature) {

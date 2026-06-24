@@ -9,6 +9,7 @@ import {
 } from "./entities";
 import GameManager from "./GameManager";
 import { getRandomSpawnPoint, getPathGrid } from "./utils";
+import { SpatialHash } from "./spatialhash";
 import { DEBUG, dlog } from "./debug";
 
 // Minimal shape of the camera's WebGL post-FX controller (typed loosely so we
@@ -92,6 +93,17 @@ export default class GameScene extends Phaser.Scene {
   private totalEaten = 0;
   private gameManager: GameManager;
   private pathGrid: number[][] = [];
+  // Per-frame spatial hashes for O(1)-ish nearest lookups (rebuilt in update()).
+  private creatureHash = new SpatialHash<Creature>(96);
+  private hunterHash = new SpatialHash<Hunter>(96);
+  private foliageHash = new SpatialHash<Foliage>(96);
+  // Optional JS-cost probe (localStorage chd-perf=1): rolling avg update() ms.
+  private perfOn = false;
+  private perfAccum = 0;
+  private perfCount = 0;
+  // Diagnostic kill-switch (localStorage chd-noopt=1): force the pre-optimisation
+  // path (linear nearest scans + always A*) so the two can be benchmarked.
+  public noOpt = false;
   private longPressTimer: Phaser.Time.TimerEvent | null = null;
   private foliageStreamTimer: Phaser.Time.TimerEvent | null = null;
   private lastAutoSpawn = 0; // time accumulator for ongoing plant spawning
@@ -141,6 +153,13 @@ export default class GameScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor(GRASS_COLORS[this.grassKey]);
 
     this.setupFx();
+
+    try {
+      this.perfOn = localStorage.getItem("chd-perf") === "1";
+      this.noOpt = localStorage.getItem("chd-noopt") === "1";
+    } catch (e) {
+      /* ignore */
+    }
 
     // Night wash, dark navy, invisible until a day ends. Above the world (and
     // fog) but below the end text so the meadow falls dark while HUNGER reads on.
@@ -329,6 +348,12 @@ export default class GameScene extends Phaser.Scene {
   }
 
   public update(): void {
+    const t0 = this.perfOn ? performance.now() : 0;
+    // Rebuild the spatial hashes once per frame, before anything queries them.
+    this.creatureHash.build(this.creatures.getChildren() as Creature[]);
+    this.hunterHash.build(this.hunters.getChildren() as Hunter[]);
+    this.foliageHash.build(this.foliage.getChildren() as Foliage[]);
+
     this.updatePlayer();
     this.updatePathGrid();
     this.updateCreatures();
@@ -339,6 +364,61 @@ export default class GameScene extends Phaser.Scene {
     this.checkGameOverConditions();
     this.updateCounts();
     this.updateFog();
+
+    if (this.perfOn) {
+      this.perfAccum += performance.now() - t0;
+      if (++this.perfCount >= 30) {
+        (window as unknown as { __updMs?: number }).__updMs =
+          Math.round((this.perfAccum / this.perfCount) * 1000) / 1000;
+        this.perfAccum = 0;
+        this.perfCount = 0;
+      }
+    }
+  }
+
+  // Nearest-neighbour helpers backed by the per-frame spatial hashes (or a plain
+  // linear scan when the diagnostic kill-switch is on).
+  public nearestCreature(x: number, y: number): Creature | undefined {
+    return this.noOpt
+      ? this.linearNearest<Creature>(this.creatures, x, y)
+      : this.creatureHash.nearest(x, y);
+  }
+  public nearestHunter(x: number, y: number): Hunter | undefined {
+    return this.noOpt
+      ? this.linearNearest<Hunter>(this.hunters, x, y)
+      : this.hunterHash.nearest(x, y);
+  }
+  public nearestFoliage(
+    x: number,
+    y: number,
+    accept?: (f: Foliage) => boolean
+  ): Foliage | undefined {
+    return this.noOpt
+      ? this.linearNearest<Foliage>(this.foliage, x, y, accept)
+      : this.foliageHash.nearest(x, y, accept);
+  }
+
+  private linearNearest<T extends Phaser.GameObjects.Sprite>(
+    group: Phaser.GameObjects.Group,
+    x: number,
+    y: number,
+    accept?: (e: T) => boolean
+  ): T | undefined {
+    let best: T | undefined;
+    let bestD = Infinity;
+    for (const it of group.getChildren() as T[]) {
+      if (!it.active || (accept && !accept(it))) {
+        continue;
+      }
+      const dx = it.x - x;
+      const dy = it.y - y;
+      const d = dx * dx + dy * dy;
+      if (d < bestD) {
+        bestD = d;
+        best = it;
+      }
+    }
+    return best;
   }
 
   // Live creature/hunter counts in the HUD, refreshed a few times a second.

@@ -69,6 +69,52 @@ export function getNearestEntity<T extends Phaser.GameObjects.Sprite>(
   return nearestEntity;
 }
 
+// Walk the grid cells along the straight line from (x0,y0) to (x1,y1) and report
+// whether any are blocked. Used to skip A* entirely when there's a clear shot to
+// the goal (the common case in open field), which removes most pathfinding work.
+export function lineBlocked(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  grid: number[][],
+  gridSize: number
+): boolean {
+  if (grid.length === 0) {
+    return false;
+  }
+  const h = grid.length;
+  const w = grid[0].length;
+  let cx = Math.floor(x0 / gridSize);
+  let cy = Math.floor(y0 / gridSize);
+  const ex = Math.floor(x1 / gridSize);
+  const ey = Math.floor(y1 / gridSize);
+  const dx = Math.abs(ex - cx);
+  const dy = Math.abs(ey - cy);
+  const sx = cx < ex ? 1 : -1;
+  const sy = cy < ey ? 1 : -1;
+  let err = dx - dy;
+  // Bounded walk; the grid is small so this is a handful of cells per call.
+  for (let guard = 0; guard < w + h + 4; guard++) {
+    if (cy >= 0 && cy < h && cx >= 0 && cx < w && grid[cy][cx] === 1) {
+      return true;
+    }
+    if (cx === ex && cy === ey) {
+      return false;
+    }
+    const e2 = 2 * err;
+    if (e2 > -dy) {
+      err -= dy;
+      cx += sx;
+    }
+    if (e2 < dx) {
+      err += dx;
+      cy += sy;
+    }
+  }
+  return false;
+}
+
 export function findPath(
   scene: GameScene,
   startX: number,
