@@ -38,6 +38,13 @@ type PostFx = {
   };
 };
 
+// Grass (background) colours selectable in the options panel. "murky" is the
+// current old-world green; "classic" is the original brighter sea-green.
+export const GRASS_COLORS: Record<string, string> = {
+  murky: "#243524",
+  classic: "#2e8b57",
+};
+
 export default class GameScene extends Phaser.Scene {
   public creatures: Phaser.GameObjects.Group;
   public hunters: Phaser.GameObjects.Group;
@@ -61,6 +68,16 @@ export default class GameScene extends Phaser.Scene {
   private fogCloud?: Phaser.GameObjects.RenderTexture;
   private fogCloudW = 0;
   private fogCloudH = 0;
+  private fogBrush?: Phaser.GameObjects.Image; // soft brush to erase fog holes
+  // Fertilised soil left by creature deaths: each sprouts plants outward in
+  // rings over a few ticks, then is spent. (x,y) = death site.
+  private fertilisers: {
+    x: number;
+    y: number;
+    next: number;
+    ring: number;
+    left: number;
+  }[] = [];
   private lastFogUpdate = 0;
   // Fog style: "off" | "mist" | "cloud". Selectable in the options panel.
   private fogStyle = "mist";
@@ -85,6 +102,8 @@ export default class GameScene extends Phaser.Scene {
   // The eerie mood, broken into independent effects toggled in the options
   // panel. All default on; persisted per-effect in localStorage.
   private fx = { vignette: true, grade: true };
+  // Grass (background) colour key into GRASS_COLORS. Selectable in options.
+  private grassKey = "murky";
   private masterVolume = 1; // 0..1, cycled by the volume button
   private lastWailAt = 0; // throttles death wails so they don't stack into a roar
   private endText?: Phaser.GameObjects.Text;
@@ -115,8 +134,8 @@ export default class GameScene extends Phaser.Scene {
     this.homes = this.add.group();
     this.deaths = this.add.group();
 
-    // Murky, desaturated old-world green.
-    this.cameras.main.setBackgroundColor("#243524");
+    // Grass colour (applied for real in applyFx, after loadFx reads the pref).
+    this.cameras.main.setBackgroundColor(GRASS_COLORS[this.grassKey]);
 
     this.setupFx();
 
@@ -303,6 +322,7 @@ export default class GameScene extends Phaser.Scene {
     this.updateCreatures();
     this.updateHunters();
     this.maybeAutoSpawn();
+    this.updateFertilisers();
     this.checkHomeArrivals();
     this.checkGameOverConditions();
     this.updateCounts();
@@ -545,6 +565,21 @@ export default class GameScene extends Phaser.Scene {
       .setOrigin(0, 0)
       .setDepth(820);
 
+    // Off-screen brush used to erase soft holes in the cloud (fog parts around
+    // the living). Never rendered itself; only its transform feeds rt.erase().
+    if (this.fogBrush) {
+      this.fogBrush.destroy();
+    }
+    this.fogBrush = this.add
+      .image(-9999, -9999, "chd-fog")
+      .setVisible(false);
+
+    // Start both layers hidden and transparent so the first applyFx fades the
+    // active one in cleanly (no pop on load).
+    this.fogMist.setVisible(false);
+    this.fogMist.alpha = 0;
+    this.fogRt.setVisible(false).setAlpha(0);
+
     this.applyFx();
   }
 
@@ -565,6 +600,38 @@ export default class GameScene extends Phaser.Scene {
     const oy = -marginY * (0.5 + 0.5 * Math.sin(now / 11000));
     rt.clear();
     rt.draw("chd-cloud", ox, oy, 1);
+    // Fog parts around the living: punch a soft hole at every creature, hunter
+    // and the skull, so fog only sits where they are not. The holes follow
+    // them and the cloud flows back in once they move on (full redraw each
+    // tick). erase() respects the brush's position + scale.
+    const brush = this.fogBrush;
+    if (brush) {
+      const punch = (x: number, y: number, s: number) => {
+        brush.setScale(s);
+        brush.setPosition(x, y);
+        rt.erase(brush);
+      };
+      (this.creatures.getChildren() as Phaser.GameObjects.GameObject[]).forEach(
+        (c) => {
+          const s = c as unknown as { active: boolean; x: number; y: number };
+          if (s.active) {
+            punch(s.x, s.y, 0.7);
+          }
+        }
+      );
+      (this.hunters.getChildren() as Phaser.GameObjects.GameObject[]).forEach(
+        (h) => {
+          const s = h as unknown as { active: boolean; x: number; y: number };
+          if (s.active) {
+            punch(s.x, s.y, 0.9);
+          }
+        }
+      );
+      const skull = this.player;
+      if (skull) {
+        punch(skull.x, skull.y, 1.4);
+      }
+    }
   }
 
   // Read the eerie-mood effect flags from localStorage. Each effect persists on
@@ -581,6 +648,10 @@ export default class GameScene extends Phaser.Scene {
       };
       this.fx.vignette = read("chd-fx-vignette", this.fx.vignette);
       this.fx.grade = read("chd-fx-grade", this.fx.grade);
+      const grass = localStorage.getItem("chd-grass");
+      if (grass && GRASS_COLORS[grass]) {
+        this.grassKey = grass;
+      }
       const style = localStorage.getItem("chd-fog-style");
       if (style === "off" || style === "mist" || style === "cloud") {
         this.fogStyle = style;
@@ -616,7 +687,60 @@ export default class GameScene extends Phaser.Scene {
   // closes the world in; a desaturating grade drains it to a grim old-world murk
   // (blood reds still read against the sickly green). WebGL only for the camera
   // grade; the fog is a plain particle layer that works either way.
+  public setGrass(key: string): void {
+    if (!GRASS_COLORS[key]) {
+      return;
+    }
+    this.grassKey = key;
+    try {
+      localStorage.setItem("chd-grass", key);
+    } catch (e) {
+      /* ignore */
+    }
+    this.cameras.main.setBackgroundColor(GRASS_COLORS[key]);
+  }
+
+  // Fade a fog layer in or out (instead of popping). Tweens the layer's own
+  // alpha; for the mist that's the emitter's GameObject alpha. onHidden runs
+  // once a fade-out completes (used to clear the cloud render texture).
+  private fadeFog(
+    layer:
+      | Phaser.GameObjects.Particles.ParticleEmitter
+      | Phaser.GameObjects.RenderTexture
+      | undefined,
+    show: boolean,
+    onHidden?: () => void
+  ): void {
+    if (!layer) {
+      return;
+    }
+    this.tweens.killTweensOf(layer);
+    if (show) {
+      layer.setVisible(true);
+      this.tweens.add({
+        targets: layer,
+        alpha: 1,
+        duration: 700,
+        ease: "Sine.easeOut",
+      });
+    } else {
+      this.tweens.add({
+        targets: layer,
+        alpha: 0,
+        duration: 700,
+        ease: "Sine.easeIn",
+        onComplete: () => {
+          layer.setVisible(false);
+          if (onHidden) {
+            onHidden();
+          }
+        },
+      });
+    }
+  }
+
   private applyFx(): void {
+    this.cameras.main.setBackgroundColor(GRASS_COLORS[this.grassKey]);
     const cam = (this.cameras.main as unknown as { postFX?: PostFx }).postFX;
     if (cam) {
       cam.clear();
@@ -630,15 +754,10 @@ export default class GameScene extends Phaser.Scene {
         grade.brightness(0.86);
       }
     }
-    if (this.fogMist) {
-      this.fogMist.setVisible(this.fogStyle === "mist");
-    }
-    if (this.fogRt) {
-      this.fogRt.setVisible(this.fogStyle === "cloud");
-      if (this.fogStyle !== "cloud") {
-        this.fogRt.clear();
-      }
-    }
+    // Fog layers fade in/out rather than popping. The cloud layer clears its
+    // render texture only once it has fully faded out.
+    this.fadeFog(this.fogMist, this.fogStyle === "mist");
+    this.fadeFog(this.fogRt, this.fogStyle === "cloud", () => this.fogRt?.clear());
   }
 
   // Ongoing plant spawning during a level, driven from update() on a time
@@ -659,6 +778,37 @@ export default class GameScene extends Phaser.Scene {
     this.lastAutoSpawn = this.time.now;
     if (this.foliage.countActive() < this.gameManager.getMaxFoliage()) {
       this.spawnFoliage(amount);
+    }
+  }
+
+  // Fertilised soil: each death sprouts plants outward in widening rings over a
+  // few ticks, as if the corpse enriched the ground. Spent entries are dropped.
+  private updateFertilisers(): void {
+    if (this.roundEnding || this.fertilisers.length === 0) {
+      return;
+    }
+    const now = this.time.now;
+    const maxFoliage = this.gameManager.getMaxFoliage();
+    for (let i = this.fertilisers.length - 1; i >= 0; i--) {
+      const f = this.fertilisers[i];
+      if (now < f.next) {
+        continue;
+      }
+      if (this.foliage.countActive() < maxFoliage) {
+        f.ring++;
+        // Wider ring each tick = growth spreading outward from the death.
+        const sprouts = Math.min(1 + f.ring, 4);
+        for (let s = 0; s < sprouts; s++) {
+          const a = Phaser.Math.FloatBetween(0, Math.PI * 2);
+          const d = 6 + f.ring * 10 + Phaser.Math.Between(-4, 4);
+          this.plantOne(f.x + Math.cos(a) * d, f.y + Math.sin(a) * d, false);
+        }
+      }
+      f.left--;
+      f.next = now + 300;
+      if (f.left <= 0) {
+        this.fertilisers.splice(i, 1);
+      }
     }
   }
 
@@ -996,6 +1146,30 @@ export default class GameScene extends Phaser.Scene {
     fogRow.appendChild(select);
     host.appendChild(fogRow);
 
+    // Grass colour selector.
+    const grassRow = document.createElement("div");
+    grassRow.className = "config-row";
+    const grassLabel = document.createElement("label");
+    grassLabel.textContent = "Grass colour";
+    const grassSelect = document.createElement("select");
+    grassSelect.className = "config-select";
+    for (const [val, text] of [
+      ["murky", "Murky (old-world)"],
+      ["classic", "Classic (green)"],
+    ]) {
+      const o = document.createElement("option");
+      o.value = val;
+      o.textContent = text;
+      if (val === this.grassKey) {
+        o.selected = true;
+      }
+      grassSelect.appendChild(o);
+    }
+    grassSelect.onchange = () => this.setGrass(grassSelect.value);
+    grassRow.appendChild(grassLabel);
+    grassRow.appendChild(grassSelect);
+    host.appendChild(grassRow);
+
     // The remaining mood effects as checkboxes.
     const opts: [string, "vignette" | "grade", boolean][] = [
       ["Vignette (closing dark)", "vignette", this.fx.vignette],
@@ -1118,7 +1292,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private levelHunterCount(): number {
-    return this.gameManager.getHuntersPerLevel();
+    return this.gameManager.getHunterCountForLevel(this.level);
   }
 
   private startGame(): void {
@@ -1133,6 +1307,7 @@ export default class GameScene extends Phaser.Scene {
     this.totalSurvived = 0;
     this.totalEaten = 0;
     this.survivorGenes = []; // a fresh run starts from base stock
+    this.fertilisers = [];
 
     this.creatures.clear(true, true);
     this.hunters.clear(true, true);
@@ -1160,6 +1335,7 @@ export default class GameScene extends Phaser.Scene {
     this.survivorGenes = [];
     this.survivedThisLevel = 0;
     this.eatenThisLevel = 0;
+    this.fertilisers = [];
 
     // Clear the field: only the creatures that reached home begin the next day.
     // Any that were still out in the open do not carry.
@@ -1302,6 +1478,14 @@ export default class GameScene extends Phaser.Scene {
     }
 
     this.spawnDeath(x, y);
+    // The corpse fertilises the soil: plants will sprout outward from here.
+    this.fertilisers.push({
+      x,
+      y,
+      next: this.time.now + 350,
+      ring: 0,
+      left: Phaser.Math.Between(4, 6),
+    });
     this.bloodEmitter.explode(8, x, y);
     this.pulsePlayer();
     this.flashTitle();
@@ -1347,17 +1531,23 @@ export default class GameScene extends Phaser.Scene {
 
   // Create a single plant at a world position (no ripple). Shared by the
   // tap-to-plant and the press-and-hold stream.
-  private plantOne(x: number, y: number): void {
+  private plantOne(x: number, y: number, counted = true): void {
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const px = Phaser.Math.Clamp(x, 6, W - 6);
+    const py = Phaser.Math.Clamp(y, 6, H - 6);
     const foliage = new Foliage(
       this,
-      x,
-      y,
+      px,
+      py,
       `foliage${Phaser.Math.Between(1, 9)}`
     );
     foliage.setScale(this.gameManager.getFoliageSize() / foliage.width);
     this.foliage.add(foliage);
     this.physics.add.existing(foliage);
-    this.stats.planted++; // player-grown plants, logged locally
+    if (counted) {
+      this.stats.planted++; // player-grown plants, logged locally
+    }
   }
 
   private spawnFoliageAtPointer(pointer: Phaser.Input.Pointer): void {

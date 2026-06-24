@@ -28,7 +28,9 @@ export default class GameManager {
   private static instance: GameManager;
 
   private initialCreatures = 3; // day 1 starts with this many; later days carry survivors
-  private huntersPerLevel = 1; // hunters spawned at the start of each day
+  // Hunters spawned at the start of each day = huntersBase + huntersPerLevel*(day-1).
+  private huntersBase = 1; // hunters on day 1 (the N in "N + per-day")
+  private huntersPerLevel = 1; // extra hunters added each subsequent day
   private initialFoliage = 50;
   private regularLevelFoliage = 50;
   // Ongoing plant spawning during a level. Amount of 0 turns it off. While it
@@ -95,7 +97,8 @@ export default class GameManager {
     ): EditableParam => ({ key, label, min, max, step, get, set, type, section });
     return [
       p("Population", "initialCreatures", "Creatures (day 1)", 1, 60, 1, () => this.initialCreatures, (v) => (this.initialCreatures = v)),
-      p("Population", "huntersPerLevel", "Hunters per day", 0, 20, 1, () => this.huntersPerLevel, (v) => (this.huntersPerLevel = v)),
+      p("Population", "huntersBase", "Hunters (day 1)", 0, 20, 1, () => this.huntersBase, (v) => (this.huntersBase = v)),
+      p("Population", "huntersPerLevel", "Hunters added per day", 0, 20, 1, () => this.huntersPerLevel, (v) => (this.huntersPerLevel = v)),
       p("Population", "maxCreatures", "Max creatures (perf cap)", 20, 1000, 20, () => this.maxCreatures, (v) => (this.maxCreatures = v)),
 
       p("Plants", "initialFoliage", "Plants (day 1)", 0, 800, 10, () => this.initialFoliage, (v) => (this.initialFoliage = v)),
@@ -168,6 +171,7 @@ export default class GameManager {
       /* ignore */
     }
     this.initialCreatures = 3;
+    this.huntersBase = 1;
     this.huntersPerLevel = 1;
     this.initialFoliage = 50;
     this.regularLevelFoliage = 50;
@@ -215,8 +219,15 @@ export default class GameManager {
   public getInitialCreatures(): number {
     return this.initialCreatures;
   }
+  public getHuntersBase(): number {
+    return this.huntersBase;
+  }
   public getHuntersPerLevel(): number {
     return this.huntersPerLevel;
+  }
+  // Hunters spawned at the start of a given day (1-based).
+  public getHunterCountForLevel(level: number): number {
+    return this.huntersBase + this.huntersPerLevel * Math.max(0, level - 1);
   }
   public getInitialFoliage(): number {
     return this.initialFoliage;

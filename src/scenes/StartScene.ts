@@ -18,8 +18,17 @@ export default class StartScene extends Phaser.Scene {
   public create(): void {
     const W = this.scale.width;
     const H = this.scale.height;
-    // Murky, desaturated old-world green to match the game.
-    this.cameras.main.setBackgroundColor("#243524");
+    // Grass colour to match the game (respecting the options-panel choice).
+    let grass = "#243524";
+    try {
+      const key = localStorage.getItem("chd-grass");
+      if (key === "classic") {
+        grass = "#2e8b57";
+      }
+    } catch (e) {
+      /* ignore */
+    }
+    this.cameras.main.setBackgroundColor(grass);
 
     // Match the game's eerie mood (respecting the per-effect toggles) so the
     // title screen and the game look like the same grim world. WebGL only.
