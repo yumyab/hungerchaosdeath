@@ -57,7 +57,6 @@ function steer(
       now >= mover.repathAt)
   ) {
     mover.goalKey = goalKey;
-    mover.repathAt = now + 300;
     const grid = scene.getPathGrid();
     const gridSize = GameManager.getInstance().getGridSize();
     // Clear straight shot? Skip A* entirely (the common case in open field) and
@@ -65,13 +64,20 @@ function steer(
     if (!scene.noOpt && !lineBlocked(mover.x, mover.y, goalX, goalY, grid, gridSize)) {
       mover.path = [];
       mover.directOk = true;
-    } else {
+      mover.repathAt = now + 300;
+    } else if (scene.requestAStar()) {
       mover.computing = true;
       mover.directOk = false;
+      mover.repathAt = now + 300;
       findPath(scene, mover.x, mover.y, goalX, goalY, grid, (path) => {
         mover.path = path;
         mover.computing = false;
       });
+    } else {
+      // Pathfinding budget spent this frame: keep any existing path and retry
+      // next frame rather than stalling on a fresh route.
+      mover.directOk = false;
+      mover.repathAt = now;
     }
   }
 
@@ -198,7 +204,8 @@ export class Creature extends Phaser.Physics.Arcade.Sprite {
     if (now >= this.nextThink) {
       this.nearestHunter = gameScene.nearestHunter(this.x, this.y) ?? null;
       this.targetFoliage = this.pickFoliage(gameScene);
-      this.nextThink = now + 130 + Phaser.Math.Between(0, 90);
+      this.nextThink =
+        now + (130 + Phaser.Math.Between(0, 90)) * gameScene.thinkScale;
     } else if (
       this.targetFoliage &&
       (!this.targetFoliage.active ||
@@ -539,7 +546,8 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
       !this.targetCreature.active
     ) {
       this.targetCreature = gameScene.nearestCreature(this.x, this.y) ?? null;
-      this.nextThink = now + 130 + Phaser.Math.Between(0, 90);
+      this.nextThink =
+        now + (130 + Phaser.Math.Between(0, 90)) * gameScene.thinkScale;
     }
     if (!this.targetCreature) {
       body.setVelocity(0, 0);
@@ -549,7 +557,10 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
   }
 }
 
-export class Foliage extends Phaser.Physics.Arcade.Sprite {
+// Plants carry no physics body: eating is distance-based and "plant as obstacle"
+// is handled by the path grid, so there is nothing for arcade physics to do.
+// Dropping the body keeps the physics step off the hundreds/thousands of plants.
+export class Foliage extends Phaser.GameObjects.Sprite {
   // Claimed by the one creature eating it, so a single plant can't feed (and
   // breed) several creatures at once.
   public claimed = false;
@@ -558,8 +569,6 @@ export class Foliage extends Phaser.Physics.Arcade.Sprite {
     super(scene, x, y, texture);
     this.setOrigin(0.5);
     scene.add.existing(this);
-    scene.physics.add.existing(this);
-    this.setCircle(32); // Set the collision body size
   }
 }
 

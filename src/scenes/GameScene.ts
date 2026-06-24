@@ -104,6 +104,12 @@ export default class GameScene extends Phaser.Scene {
   // Diagnostic kill-switch (localStorage chd-noopt=1): force the pre-optimisation
   // path (linear nearest scans + always A*) so the two can be benchmarked.
   public noOpt = false;
+  // Think-rate multiplier (>=1): grows with population so the per-creature nearest
+  // scans run less often when the field is huge. Recomputed each frame.
+  public thinkScale = 1;
+  // A* computations remaining this frame; refilled each frame so a burst of
+  // repaths is spread over time instead of spiking one frame.
+  private aStarBudget = 0;
   private longPressTimer: Phaser.Time.TimerEvent | null = null;
   private foliageStreamTimer: Phaser.Time.TimerEvent | null = null;
   private lastAutoSpawn = 0; // time accumulator for ongoing plant spawning
@@ -350,9 +356,17 @@ export default class GameScene extends Phaser.Scene {
   public update(): void {
     const t0 = this.perfOn ? performance.now() : 0;
     // Rebuild the spatial hashes once per frame, before anything queries them.
-    this.creatureHash.build(this.creatures.getChildren() as Creature[]);
-    this.hunterHash.build(this.hunters.getChildren() as Hunter[]);
+    const creatureKids = this.creatures.getChildren() as Creature[];
+    const hunterKids = this.hunters.getChildren() as Hunter[];
+    this.creatureHash.build(creatureKids);
+    this.hunterHash.build(hunterKids);
     this.foliageHash.build(this.foliage.getChildren() as Foliage[]);
+
+    // Scale the AI think interval up with population, and refill the per-frame
+    // pathfinding budget, so big fields cost less per frame.
+    const pop = creatureKids.length + hunterKids.length;
+    this.thinkScale = this.noOpt ? 1 : Phaser.Math.Clamp(1 + pop / 700, 1, 3);
+    this.aStarBudget = this.noOpt ? 100000 : 16;
 
     this.updatePlayer();
     this.updatePathGrid();
@@ -396,6 +410,16 @@ export default class GameScene extends Phaser.Scene {
     return this.noOpt
       ? this.linearNearest<Foliage>(this.foliage, x, y, accept)
       : this.foliageHash.nearest(x, y, accept);
+  }
+
+  // Claim one of this frame's A* runs; false when the budget is spent (the
+  // caller defers and retries next frame).
+  public requestAStar(): boolean {
+    if (this.aStarBudget <= 0) {
+      return false;
+    }
+    this.aStarBudget--;
+    return true;
   }
 
   private linearNearest<T extends Phaser.GameObjects.Sprite>(
@@ -1664,7 +1688,6 @@ export default class GameScene extends Phaser.Scene {
       );
       foliage.setScale(this.gameManager.getFoliageSize() / foliage.width);
       this.foliage.add(foliage);
-      this.physics.add.existing(foliage);
     }
   }
 
@@ -1683,7 +1706,6 @@ export default class GameScene extends Phaser.Scene {
     );
     foliage.setScale(this.gameManager.getFoliageSize() / foliage.width);
     this.foliage.add(foliage);
-    this.physics.add.existing(foliage);
     if (counted) {
       this.stats.planted++; // player-grown plants, logged locally
     }

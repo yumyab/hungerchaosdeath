@@ -4,6 +4,10 @@ import GameManager from "./GameManager";
 import * as EasyStar from "easystarjs";
 import GameScene from "./GameScene";
 
+// One reused easystar solver (see findPath); paths compute synchronously so a
+// single shared instance is safe.
+let sharedEasyStar: EasyStar.js | undefined;
+
 export function getRandomSpawnPoint(
   scene: Phaser.Scene,
   isEdge = false
@@ -187,7 +191,9 @@ export function findPath(
     }
   }
 
-  const easystar = new EasyStar.js();
+  // Reuse one easystar instance across calls (each path computes synchronously
+  // below), so we don't allocate a solver per repath.
+  const easystar = sharedEasyStar ?? (sharedEasyStar = new EasyStar.js());
   easystar.setGrid(grid);
   easystar.setAcceptableTiles([0]);
   easystar.findPath(
