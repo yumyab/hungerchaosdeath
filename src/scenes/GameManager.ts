@@ -39,6 +39,14 @@ export default class GameManager {
   private foliageSpawnAmount = 1;
   private foliageSpawnRateMs = 800;
   private maxFoliage = 400; // cap so the field can't grow without bound
+  // Speed multiplier while a creature/hunter is on a plant cell. When the field
+  // is too dense to path around, things wade straight through it slowly instead
+  // of phasing across at full speed.
+  private foliageDrag = 0.4;
+  // 0/1: when on, grid-walkers (hunters chasing, creatures fleeing/homing) never
+  // phase straight through plants. With no route they hold still and wait for a
+  // gap, which opens as grazing creatures eat the foliage away.
+  private gridStrictMovement = 0;
   private maxCreatures = 999; // cap on the flock so breeding can't tank the framerate
   // Optional master size: 0 = off; when > 0 it sets every entity/grid size to
   // base * scale. Editing any dependent size individually turns it off again.
@@ -107,6 +115,9 @@ export default class GameManager {
       p("Plants", "foliageSpawnAmount", "Auto-spawn plants/tick (0=off)", 0, 50, 1, () => this.foliageSpawnAmount, (v) => (this.foliageSpawnAmount = v)),
       p("Plants", "foliageSpawnRateMs", "Auto-spawn interval (ms)", 100, 5000, 50, () => this.foliageSpawnRateMs, (v) => (this.foliageSpawnRateMs = v)),
       p("Plants", "maxFoliage", "Max plants on field", 50, 1500, 25, () => this.maxFoliage, (v) => (this.maxFoliage = v)),
+
+      p("Movement", "foliageDrag", "Speed through plants (x)", 0.05, 1, 0.05, () => this.foliageDrag, (v) => (this.foliageDrag = v)),
+      p("Movement", "gridStrictMovement", "Wait when blocked (no phasing)", 0, 1, 1, () => this.gridStrictMovement, (v) => (this.gridStrictMovement = v ? 1 : 0), "bool"),
 
       p("Creatures", "creatureSpeed", "Creature speed", 10, 400, 5, () => this.creatureSpeed, (v) => (this.creatureSpeed = v)),
       p("Creatures", "creatureMaxSpeed", "Creature max speed", 10, 500, 5, () => this.creatureMaxSpeed, (v) => (this.creatureMaxSpeed = v)),
@@ -179,6 +190,8 @@ export default class GameManager {
     this.foliageSpawnAmount = 1;
     this.foliageSpawnRateMs = 800;
     this.maxFoliage = 400;
+    this.foliageDrag = 0.4;
+    this.gridStrictMovement = 0;
     this.maxCreatures = 999;
     this.hunterSpeed = 150;
     this.hunterSize = 42;
@@ -244,6 +257,12 @@ export default class GameManager {
   }
   public getMaxFoliage(): number {
     return this.maxFoliage;
+  }
+  public getFoliageDrag(): number {
+    return this.foliageDrag;
+  }
+  public getGridStrictMovement(): boolean {
+    return this.gridStrictMovement !== 0;
   }
   public getMaxCreatures(): number {
     return this.maxCreatures;

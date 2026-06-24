@@ -1616,6 +1616,34 @@ export default class GameScene extends Phaser.Scene {
     return this.pathGrid;
   }
 
+  // Velocity multiplier for something standing at (x,y): full speed on open
+  // ground, but slowed to a wade when it is on a plant cell (so things crossing
+  // dense, un-pathable foliage trudge through instead of phasing at full speed).
+  // The skull's no-go ring is also blocked in the grid but must not slow things.
+  public terrainSpeedFactor(x: number, y: number): number {
+    const grid = this.pathGrid;
+    if (grid.length === 0) {
+      return 1;
+    }
+    const gs = this.gameManager.getGridSize();
+    const cx = Math.floor(x / gs);
+    const cy = Math.floor(y / gs);
+    if (cy < 0 || cy >= grid.length || cx < 0 || cx >= grid[0].length) {
+      return 1;
+    }
+    if (grid[cy][cx] !== 1) {
+      return 1;
+    }
+    const scare = this.skullScare();
+    if (
+      scare &&
+      Phaser.Math.Distance.Between(x, y, scare.x, scare.y) <= scare.r
+    ) {
+      return 1;
+    }
+    return this.gameManager.getFoliageDrag();
+  }
+
   // Save any creature sitting on a home. Homes have no physics body, so this
   // proximity check replaces the (never-firing) arcade overlap.
   private checkHomeArrivals(): void {

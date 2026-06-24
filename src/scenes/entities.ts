@@ -77,13 +77,23 @@ function steer(
     mover.path.shift();
   }
 
-  // Steer toward the next waypoint, or straight at the goal while a fresh path
-  // is still being computed.
-  const target = mover.path.length > 0 ? mover.path[0] : { x: goalX, y: goalY };
   const body = mover.body as Phaser.Physics.Arcade.Body;
+  const hasPath = mover.path.length > 0;
+
+  // Strict grid mode: with no route through the plants, hold position and wait
+  // for a gap (grazers eat the foliage away) instead of phasing straight across.
+  if (!hasPath && GameManager.getInstance().getGridStrictMovement()) {
+    body.setVelocity(0, 0);
+    return;
+  }
+
+  // Steer toward the next waypoint, or straight at the goal while a fresh path
+  // is still being computed (or, when not strict, when no route exists).
+  const target = hasPath ? mover.path[0] : { x: goalX, y: goalY };
   const angle = Math.atan2(target.y - mover.y, target.x - mover.x);
-  // speed is in pixels per second.
-  body.setVelocity(Math.cos(angle) * mover.speed, Math.sin(angle) * mover.speed);
+  // speed is in pixels per second; slowed to a wade while crossing plant cells.
+  const v = mover.speed * scene.terrainSpeedFactor(mover.x, mover.y);
+  body.setVelocity(Math.cos(angle) * v, Math.sin(angle) * v);
 }
 
 export class Creature extends Phaser.Physics.Arcade.Sprite {
@@ -235,7 +245,7 @@ export class Creature extends Phaser.Physics.Arcade.Sprite {
         // routes the creature around it forever (the circling/trapped bug).
         // Grazing steers straight in instead. Fleeing and hunters still
         // pathfind, so plants still wall those off.
-        this.moveDirect(foliage.x, foliage.y);
+        this.moveDirect(gameScene, foliage.x, foliage.y);
       }
       return;
     }
@@ -263,10 +273,12 @@ export class Creature extends Phaser.Physics.Arcade.Sprite {
     );
   }
 
-  private moveDirect(tx: number, ty: number): void {
+  private moveDirect(gameScene: GameScene, tx: number, ty: number): void {
     const body = this.body as Phaser.Physics.Arcade.Body;
     const a = Math.atan2(ty - this.y, tx - this.x);
-    body.setVelocity(Math.cos(a) * this.speed, Math.sin(a) * this.speed);
+    // Grazing ignores the grid, so apply the same wade-through-plants slowdown.
+    const v = this.speed * gameScene.terrainSpeedFactor(this.x, this.y);
+    body.setVelocity(Math.cos(a) * v, Math.sin(a) * v);
   }
 
   private isHunterNearby(hunter: Hunter): boolean {
