@@ -108,6 +108,9 @@ export default class GameScene extends Phaser.Scene {
   private lastWailAt = 0; // throttles death wails so they don't stack into a roar
   private endText?: Phaser.GameObjects.Text;
   private endSubText?: Phaser.GameObjects.Text;
+  // Full-screen night wash for the day-change (hunger) screen. Sits above the
+  // world but below the end text, so the world darkens while HUNGER stays lit.
+  private nightOverlay?: Phaser.GameObjects.Rectangle;
   private lastGridUpdate = 0;
   private gridUpdateInterval = 200;
   private titleFlashTimer?: ReturnType<typeof setTimeout>;
@@ -138,6 +141,15 @@ export default class GameScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor(GRASS_COLORS[this.grassKey]);
 
     this.setupFx();
+
+    // Night wash, dark navy, invisible until a day ends. Above the world (and
+    // fog) but below the end text so the meadow falls dark while HUNGER reads on.
+    this.nightOverlay = this.add
+      .rectangle(0, 0, W, H, 0x04060e)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(950)
+      .setAlpha(0);
 
     // Reuse the music started in StartScene so the audio toggle works in-game.
     this.music =
@@ -915,7 +927,12 @@ export default class GameScene extends Phaser.Scene {
           `the ${this.ordinal(this.level + 1)} day begins\n` +
           `survived ${this.survivedThisLevel}   eaten ${this.eatenThisLevel}`
       );
-      this.time.delayedCall(2200, this.startNextLevel, [], this);
+      // Night falls as the day ends, then lifts to dawn as the next day begins.
+      this.fadeNight(0.78, 2000);
+      this.time.delayedCall(3000, () => {
+        this.startNextLevel();
+        this.fadeNight(0, 2200);
+      });
     } else {
       // Wiped out with no survivors: the run ends. A dark flash and a shudder,
       // then the final screen showing the day reached and the best ever.
@@ -992,6 +1009,21 @@ export default class GameScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setDepth(1000);
+  }
+
+  // Slowly wash the world to/from night (alpha of the dark overlay).
+  private fadeNight(alpha: number, duration: number): void {
+    const o = this.nightOverlay;
+    if (!o) {
+      return;
+    }
+    this.tweens.killTweensOf(o);
+    this.tweens.add({
+      targets: o,
+      alpha,
+      duration,
+      ease: "Sine.easeInOut",
+    });
   }
 
   private updateHud(): void {
