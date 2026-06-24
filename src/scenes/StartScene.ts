@@ -101,6 +101,9 @@ export default class StartScene extends Phaser.Scene {
     // A few big shrubs and a single hunter, scaled up for the zoomed-in look.
     this.spawnFoliage(26);
     this.spawnHunter(1);
+
+    // Everything fades in from the loading screen's dark wash.
+    this.cameras.main.fadeIn(700, 4, 6, 14);
   }
 
   // A drifting fog of soft pixel blobs, matching the in-game mist.

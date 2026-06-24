@@ -128,7 +128,7 @@ export default class GameScene extends Phaser.Scene {
   private endSubText?: Phaser.GameObjects.Text;
   // Full-screen night wash for the day-change (hunger) screen. Sits above the
   // world but below the end text, so the world darkens while HUNGER stays lit.
-  private nightOverlay?: Phaser.GameObjects.Rectangle;
+  private nightOverlay?: Phaser.GameObjects.Image;
   private lastGridUpdate = 0;
   private gridUpdateInterval = 200;
   private titleFlashTimer?: ReturnType<typeof setTimeout>;
@@ -172,11 +172,21 @@ export default class GameScene extends Phaser.Scene {
         this.startNextLevel();
     }
 
+    // The HUD/controls bar is hidden through loading and the title; reveal it now
+    // that a game is actually running.
+    const topbar = document.getElementById("topbar");
+    if (topbar) {
+      topbar.style.display = "";
+    }
+
     // Night wash, dark navy, invisible until a day ends. Above the world (and
     // fog) but below the end text so the meadow falls dark while HUNGER reads on.
+    // A tinted, stretched sprite (batched) rather than a Shape (pipeline flush).
     this.nightOverlay = this.add
-      .rectangle(0, 0, W, H, 0x04060e)
+      .image(0, 0, "chd-white")
       .setOrigin(0, 0)
+      .setDisplaySize(W, H)
+      .setTint(0x04060e)
       .setScrollFactor(0)
       .setDepth(950)
       .setAlpha(0);
@@ -589,6 +599,15 @@ export default class GameScene extends Phaser.Scene {
       g.fillStyle(0xffffff, 1);
       g.fillCircle(8, 8, 8);
       g.generateTexture("chd-spark", 16, 16);
+      g.destroy();
+    }
+    if (!this.textures.exists("chd-white")) {
+      // 1px white, tinted + stretched for the night wash (a batched sprite is
+      // cheaper to render than a Shape, which flushes the render pipeline).
+      const g = this.make.graphics({ x: 0, y: 0 });
+      g.fillStyle(0xffffff, 1);
+      g.fillRect(0, 0, 2, 2);
+      g.generateTexture("chd-white", 2, 2);
       g.destroy();
     }
     if (!this.textures.exists("chd-blood")) {
@@ -1039,6 +1058,11 @@ export default class GameScene extends Phaser.Scene {
   // with zero survivors ends the run. The day you reach is the high score.
   private resolveLevel(): void {
     this.roundEnding = true;
+    // The day is over: clear the hunter horde (and any stragglers) so the end
+    // screen / night fade plays over a calm, light field instead of simulating
+    // and rendering hundreds of now-pointless hunters for several seconds.
+    this.hunters.clear(true, true);
+    this.creatures.clear(true, true);
     const won = this.survivedThisLevel >= 1;
     // The current day counts as reached; record it as the high score.
     this.bestDay = Math.max(this.bestDay, this.level);
