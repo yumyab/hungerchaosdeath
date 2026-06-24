@@ -32,7 +32,8 @@ export default class GameManager {
   private huntersBase = 1; // hunters on day 1 (the N in "N + per-day")
   private huntersPerLevel = 1; // extra hunters added each subsequent day
   private initialFoliage = 50;
-  private regularLevelFoliage = 50;
+  // Plants carry across days now; only a few fresh ones seed in "overnight".
+  private overnightFoliage = 6;
   // Ongoing plant spawning during a level. Amount of 0 turns it off. While it
   // is on, the field never empties, so levels advance via the button.
   private foliageSpawnAmount = 1;
@@ -102,7 +103,7 @@ export default class GameManager {
       p("Population", "maxCreatures", "Max creatures (perf cap)", 20, 1000, 20, () => this.maxCreatures, (v) => (this.maxCreatures = v)),
 
       p("Plants", "initialFoliage", "Plants (day 1)", 0, 800, 10, () => this.initialFoliage, (v) => (this.initialFoliage = v)),
-      p("Plants", "regularLevelFoliage", "Plants (later days)", 0, 800, 10, () => this.regularLevelFoliage, (v) => (this.regularLevelFoliage = v)),
+      p("Plants", "overnightFoliage", "Plants seeded overnight", 0, 100, 1, () => this.overnightFoliage, (v) => (this.overnightFoliage = v)),
       p("Plants", "foliageSpawnAmount", "Auto-spawn plants/tick (0=off)", 0, 50, 1, () => this.foliageSpawnAmount, (v) => (this.foliageSpawnAmount = v)),
       p("Plants", "foliageSpawnRateMs", "Auto-spawn interval (ms)", 100, 5000, 50, () => this.foliageSpawnRateMs, (v) => (this.foliageSpawnRateMs = v)),
       p("Plants", "maxFoliage", "Max plants on field", 50, 1500, 25, () => this.maxFoliage, (v) => (this.maxFoliage = v)),
@@ -174,7 +175,7 @@ export default class GameManager {
     this.huntersBase = 1;
     this.huntersPerLevel = 1;
     this.initialFoliage = 50;
-    this.regularLevelFoliage = 50;
+    this.overnightFoliage = 6;
     this.foliageSpawnAmount = 1;
     this.foliageSpawnRateMs = 800;
     this.maxFoliage = 400;
@@ -232,8 +233,8 @@ export default class GameManager {
   public getInitialFoliage(): number {
     return this.initialFoliage;
   }
-  public getRegularLevelFoliage(): number {
-    return this.regularLevelFoliage;
+  public getOvernightFoliage(): number {
+    return this.overnightFoliage;
   }
   public getFoliageSpawnAmount(): number {
     return this.foliageSpawnAmount;

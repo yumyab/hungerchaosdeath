@@ -91,6 +91,10 @@ export class Creature extends Phaser.Physics.Arcade.Sprite {
   private speedIncrement: number;
   private reproduceRange: [number, number];
   private foliageEaten = 0;
+  // Lifetime tallies that enforce "one plant only ever makes one creature":
+  // a creature can never birth more offspring than the plants it has consumed.
+  private plantsConsumed = 0;
+  private offspringMade = 0;
   public speed: number;
   // Heritable genes, drifted on breeding when mutations are enabled.
   // geneHue: -1 = untinted (base stock); otherwise a 0..359 hue passed down so
@@ -273,6 +277,7 @@ export class Creature extends Phaser.Physics.Arcade.Sprite {
       eaten.destroy();
     }
     this.foliageEaten++;
+    this.plantsConsumed++;
     // Eating speeds the creature up toward the cap, but never slows a creature
     // that's already faster than the cap (a fast mutant keeps its speed).
     const cap = GameManager.getInstance().getCreatureMaxSpeed();
@@ -312,7 +317,10 @@ export class Creature extends Phaser.Physics.Arcade.Sprite {
     }
     const gm = GameManager.getInstance();
     const [lo, hi] = this.reproduceRange;
-    const numOffspring = Phaser.Math.Between(lo, hi);
+    // Hard ceiling: never make more creatures over a lifetime than plants eaten,
+    // so a single plant can only ever yield a single creature (the clamp).
+    const allowance = this.plantsConsumed - this.offspringMade;
+    const numOffspring = Math.max(0, Math.min(Phaser.Math.Between(lo, hi), allowance));
     dlog("birth", { n: numOffspring, x: Math.round(this.x), y: Math.round(this.y) });
     for (let i = 0; i < numOffspring; i++) {
       // Spread offspring out a little so the flock doesn't stack on one point
@@ -397,6 +405,7 @@ export class Creature extends Phaser.Physics.Arcade.Sprite {
       offspring.setScale((gm.getCreatureSize() * cScale) / offspring.width);
       gameScene.addCreature(offspring);
     }
+    this.offspringMade += numOffspring;
     this.foliageEaten = 0;
   }
 }

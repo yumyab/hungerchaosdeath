@@ -549,15 +549,22 @@ export default class GameScene extends Phaser.Scene {
       this.textures.remove("chd-cloud");
     }
     const cloud = this.make.renderTexture({ width: cw, height: ch }, false);
-    const blobs = Math.round((cw * ch) / 9000);
-    for (let i = 0; i < blobs; i++) {
-      cloud.draw(
-        "chd-fog",
-        Phaser.Math.Between(-150, cw - 150),
-        Phaser.Math.Between(-150, ch - 150),
-        Phaser.Math.FloatBetween(0.4, 0.85)
+    // Big, soft cells: a handful of heavily-scaled blobs (the 300px chd-fog
+    // texture blown up to ~1000-1800px) overlap into broad banks of fog rather
+    // than a grainy field of small puffs. Drawn via a scaled image so each blob
+    // can be sized (RenderTexture.draw ignores scale on a bare texture key).
+    const blob = this.make.image({ key: "chd-fog", add: false }).setOrigin(0.5);
+    const count = Math.max(7, Math.round((cw * ch) / 170000));
+    for (let i = 0; i < count; i++) {
+      blob.setScale(Phaser.Math.FloatBetween(3.4, 6));
+      blob.setAlpha(Phaser.Math.FloatBetween(0.45, 0.8));
+      blob.setPosition(
+        Phaser.Math.Between(0, cw),
+        Phaser.Math.Between(0, ch)
       );
+      cloud.draw(blob);
     }
+    blob.destroy();
     cloud.saveTexture("chd-cloud");
     this.fogCloud = cloud;
     this.fogRt = this.add
@@ -764,9 +771,8 @@ export default class GameScene extends Phaser.Scene {
   // accumulator (0 amount = off), capped so the field can't grow without bound.
   // Reads the config each call, so edits apply immediately.
   private maybeAutoSpawn(): void {
-    if (this.roundEnding) {
-      return;
-    }
+    // Runs through the end screen too, so the field keeps living while the
+    // hunger/death verdict is up.
     const amount = this.gameManager.getFoliageSpawnAmount();
     const rate = this.gameManager.getFoliageSpawnRateMs();
     if (amount <= 0 || rate <= 0) {
@@ -784,7 +790,8 @@ export default class GameScene extends Phaser.Scene {
   // Fertilised soil: each death sprouts plants outward in widening rings over a
   // few ticks, as if the corpse enriched the ground. Spent entries are dropped.
   private updateFertilisers(): void {
-    if (this.roundEnding || this.fertilisers.length === 0) {
+    // Keeps growing through the end screen so the death's bloom plays out.
+    if (this.fertilisers.length === 0) {
       return;
     }
     const now = this.time.now;
@@ -904,7 +911,8 @@ export default class GameScene extends Phaser.Scene {
     if (won) {
       this.showEnd("HUNGER", true);
       this.endSubText = this.subtitle(
-        `the ${this.ordinal(this.level)} day passed\n` +
+        `the ${this.ordinal(this.level)} day ends   ` +
+          `the ${this.ordinal(this.level + 1)} day begins\n` +
           `survived ${this.survivedThisLevel}   eaten ${this.eatenThisLevel}`
       );
       this.time.delayedCall(2200, this.startNextLevel, [], this);
@@ -1337,6 +1345,12 @@ export default class GameScene extends Phaser.Scene {
     this.eatenThisLevel = 0;
     this.fertilisers = [];
 
+    // Plants persist across days: keep where the surviving field stands, so the
+    // land carries its growth into the next day.
+    const carriedFoliage = (this.foliage.getChildren() as Foliage[])
+      .filter((f) => f.active)
+      .map((f) => ({ x: f.x, y: f.y }));
+
     // Clear the field: only the creatures that reached home begin the next day.
     // Any that were still out in the open do not carry.
     this.creatures.clear(true, true);
@@ -1348,7 +1362,11 @@ export default class GameScene extends Phaser.Scene {
     for (let i = 0; i < this.levelHunterCount(); i++) {
       this.spawnHunter();
     }
-    this.spawnFoliage(this.gameManager.getRegularLevelFoliage());
+    // Re-grow the plants that stood at day's end, then seed a few fresh ones.
+    for (const pos of carriedFoliage) {
+      this.plantOne(pos.x, pos.y, false);
+    }
+    this.spawnFoliage(this.gameManager.getOvernightFoliage());
     this.updateHud();
     this.cameras.main.fadeIn(500);
   }
