@@ -166,6 +166,11 @@ export default class GameScene extends Phaser.Scene {
     } catch (e) {
       /* ignore */
     }
+    if (this.perfOn) {
+      // Dev hook: trigger a day-change on demand to measure its cost.
+      (window as unknown as { __forceNext?: () => void }).__forceNext = () =>
+        this.startNextLevel();
+    }
 
     // Night wash, dark navy, invisible until a day ends. Above the world (and
     // fog) but below the end text so the meadow falls dark while HUNGER reads on.
@@ -380,10 +385,14 @@ export default class GameScene extends Phaser.Scene {
     this.updateFog();
 
     if (this.perfOn) {
-      this.perfAccum += performance.now() - t0;
+      const dt = performance.now() - t0;
+      this.perfAccum += dt;
+      const w = window as unknown as { __updMs?: number; __maxMs?: number };
+      if (dt > (w.__maxMs ?? 0)) {
+        w.__maxMs = Math.round(dt * 100) / 100;
+      }
       if (++this.perfCount >= 30) {
-        (window as unknown as { __updMs?: number }).__updMs =
-          Math.round((this.perfAccum / this.perfCount) * 1000) / 1000;
+        w.__updMs = Math.round((this.perfAccum / this.perfCount) * 1000) / 1000;
         this.perfAccum = 0;
         this.perfCount = 0;
       }
@@ -1487,6 +1496,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private startNextLevel(): void {
+    const tStart = this.perfOn ? performance.now() : 0;
     this.roundEnding = false;
     this.clearEndText();
     this.level++;
@@ -1498,30 +1508,34 @@ export default class GameScene extends Phaser.Scene {
     this.eatenThisLevel = 0;
     this.fertilisers = [];
 
-    // Plants persist across days: keep where the surviving field stands, so the
-    // land carries its growth into the next day.
-    const carriedFoliage = (this.foliage.getChildren() as Foliage[])
-      .filter((f) => f.active)
-      .map((f) => ({ x: f.x, y: f.y }));
-
-    // Clear the field: only the creatures that reached home begin the next day.
-    // Any that were still out in the open do not carry.
+    // Clear only what changes between days: creatures that didn't reach home are
+    // gone, hunters respawn fresh, death markers clear. Plants persist, so the
+    // foliage objects are kept as-is (destroying and recreating the whole field
+    // every day was a big single-frame hitch on the transition); just release
+    // any claims so the new flock can graze them.
     this.creatures.clear(true, true);
     this.hunters.clear(true, true);
-    this.foliage.clear(true, true);
     this.deaths.clear(true, true);
+    (this.foliage.getChildren() as Foliage[]).forEach((f) => {
+      f.claimed = false;
+    });
 
     this.spawnFromGenes(carriedGenes);
     for (let i = 0; i < this.levelHunterCount(); i++) {
       this.spawnHunter();
     }
-    // Re-grow the plants that stood at day's end, then seed a few fresh ones.
-    for (const pos of carriedFoliage) {
-      this.plantOne(pos.x, pos.y, false);
+    // Seed a few fresh plants overnight, without exceeding the field cap.
+    const room =
+      this.gameManager.getMaxFoliage() - this.foliage.countActive();
+    if (room > 0) {
+      this.spawnFoliage(Math.min(this.gameManager.getOvernightFoliage(), room));
     }
-    this.spawnFoliage(this.gameManager.getOvernightFoliage());
     this.updateHud();
     this.cameras.main.fadeIn(500);
+    if (this.perfOn) {
+      (window as unknown as { __transMs?: number }).__transMs =
+        Math.round((performance.now() - tStart) * 100) / 100;
+    }
   }
 
   private restartGame(): void {
