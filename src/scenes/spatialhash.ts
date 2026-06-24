@@ -37,6 +37,39 @@ export class SpatialHash<T extends Phaser.GameObjects.Sprite> {
     }
   }
 
+  // Call cb for every active item within `radius` of (x,y). Only scans the cells
+  // the radius overlaps, so it stays cheap regardless of total population.
+  forEachNear(
+    x: number,
+    y: number,
+    radius: number,
+    cb: (e: T) => void
+  ): void {
+    const c = this.cell;
+    const r = Math.ceil(radius / c);
+    const cx = Math.floor(x / c);
+    const cy = Math.floor(y / c);
+    const r2 = radius * radius;
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        const b = this.buckets.get(this.key(cx + dx, cy + dy));
+        if (!b) {
+          continue;
+        }
+        for (const it of b) {
+          if (!it.active) {
+            continue;
+          }
+          const ex = it.x - x;
+          const ey = it.y - y;
+          if (ex * ex + ey * ey <= r2) {
+            cb(it);
+          }
+        }
+      }
+    }
+  }
+
   // Nearest accepted item to (x,y), or undefined. Searches rings outward and,
   // once a candidate is found, checks one extra ring so a closer entity in an
   // adjacent cell isn't missed (exact enough for AI targeting).

@@ -542,7 +542,11 @@ export default class GameScene extends Phaser.Scene {
     }
     this.lastGridUpdate = now;
     try {
-      this.pathGrid = getPathGrid(this, this.gameManager.getGridSize());
+      this.pathGrid = getPathGrid(
+        this,
+        this.gameManager.getGridSize(),
+        this.pathGrid
+      );
     } catch (error) {
       console.error("Error updating path grid:", error);
     }
@@ -729,30 +733,38 @@ export default class GameScene extends Phaser.Scene {
     // tick). erase() respects the brush's position + scale.
     const brush = this.fogBrush;
     if (brush) {
+      // Each hole is a GPU erase, so cap the count: with a large flock the fog is
+      // nearly all eaten away anyway, and an unbounded loop here would be a hidden
+      // per-tick cost. Skull and hunters take priority, then creatures fill the
+      // rest of the budget.
+      let budget = 220;
       const punch = (x: number, y: number, s: number) => {
         brush.setScale(s);
         brush.setPosition(x, y);
         rt.erase(brush);
+        budget--;
       };
-      (this.creatures.getChildren() as Phaser.GameObjects.GameObject[]).forEach(
-        (c) => {
-          const s = c as unknown as { active: boolean; x: number; y: number };
-          if (s.active) {
-            punch(s.x, s.y, 0.7);
-          }
-        }
-      );
-      (this.hunters.getChildren() as Phaser.GameObjects.GameObject[]).forEach(
-        (h) => {
-          const s = h as unknown as { active: boolean; x: number; y: number };
-          if (s.active) {
-            punch(s.x, s.y, 0.9);
-          }
-        }
-      );
       const skull = this.player;
       if (skull) {
         punch(skull.x, skull.y, 1.4);
+      }
+      const hunters = this.hunters.getChildren() as Hunter[];
+      for (const h of hunters) {
+        if (budget <= 0) {
+          break;
+        }
+        if (h.active) {
+          punch(h.x, h.y, 0.9);
+        }
+      }
+      const creatures = this.creatures.getChildren() as Creature[];
+      for (const c of creatures) {
+        if (budget <= 0) {
+          break;
+        }
+        if (c.active) {
+          punch(c.x, c.y, 0.7);
+        }
       }
     }
   }
@@ -1797,20 +1809,22 @@ export default class GameScene extends Phaser.Scene {
     // A creature counts as home once it touches the home sprite: half the home
     // plus a little for the creature's own body. Scales with the home size.
     const saveRadius = this.gameManager.getHomeSize() / 2 + 16;
-    // Snapshot, because saveCreature() destroys creatures mid-iteration.
-    const creatures = [...this.creatures.getChildren()] as Creature[];
-    for (const creature of creatures) {
-      if (!creature.active) {
-        continue;
-      }
-      for (const home of homes) {
-        if (
-          Phaser.Math.Distance.Between(creature.x, creature.y, home.x, home.y) <=
-          saveRadius
-        ) {
-          this.saveCreature(creature);
-          break;
+    // Use the spatial hash to gather only the creatures actually near a home,
+    // instead of testing every creature against every home each frame. (Hash
+    // positions are a frame old, so a save can land one frame late — harmless.)
+    const toSave: Creature[] = [];
+    const seen = new Set<Creature>();
+    for (const home of homes) {
+      this.creatureHash.forEachNear(home.x, home.y, saveRadius, (cr) => {
+        if (!seen.has(cr)) {
+          seen.add(cr);
+          toSave.push(cr);
         }
+      });
+    }
+    for (const creature of toSave) {
+      if (creature.active) {
+        this.saveCreature(creature);
       }
     }
   }

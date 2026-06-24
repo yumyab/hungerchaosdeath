@@ -295,17 +295,36 @@ function smoothPath(
 
   return smoothedPath;
 }
-export function getPathGrid(scene: GameScene, gridSize: number): number[][] {
+export function getPathGrid(
+  scene: GameScene,
+  gridSize: number,
+  reuse?: number[][]
+): number[][] {
   const gameWidth = scene.scale.width;
   const gameHeight = scene.scale.height;
   const gridWidth = Math.ceil(gameWidth / gridSize);
   const gridHeight = Math.ceil(gameHeight / gridSize);
 
-  // Start empty, then mark each plant's cell blocked. This is O(plants) rather
-  // than O(plants * cells), which matters a lot when the meadow is dense.
-  const grid: number[][] = [];
-  for (let y = 0; y < gridHeight; y++) {
-    grid.push(new Array<number>(gridWidth).fill(0));
+  // Reuse the previous frame's grid array when the dimensions match (they only
+  // change on resize, which reloads the scene), clearing it instead of
+  // allocating a fresh 2D array every rebuild. Then mark each plant's cell
+  // blocked — O(plants), not O(plants * cells).
+  let grid: number[][];
+  if (
+    reuse &&
+    reuse.length === gridHeight &&
+    reuse[0] &&
+    reuse[0].length === gridWidth
+  ) {
+    grid = reuse;
+    for (let y = 0; y < gridHeight; y++) {
+      grid[y].fill(0);
+    }
+  } else {
+    grid = [];
+    for (let y = 0; y < gridHeight; y++) {
+      grid.push(new Array<number>(gridWidth).fill(0));
+    }
   }
 
   const foliageArray = scene.foliage.getChildren() as Foliage[];
