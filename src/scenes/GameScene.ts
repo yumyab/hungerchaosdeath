@@ -813,17 +813,22 @@ export default class GameScene extends Phaser.Scene {
       if (now < f.next) {
         continue;
       }
-      if (this.foliage.countActive() < maxFoliage) {
-        f.ring++;
-        // Wider ring each tick = growth spreading outward from the death.
-        const sprouts = Math.min(1 + f.ring, 4);
-        for (let s = 0; s < sprouts; s++) {
-          const a = Phaser.Math.FloatBetween(0, Math.PI * 2);
-          const d = 6 + f.ring * 10 + Phaser.Math.Between(-4, 4);
-          this.plantOne(f.x + Math.cos(a) * d, f.y + Math.sin(a) * d, false);
-        }
+      // Spend the death's plant budget a ring at a time; stop if the budget is
+      // gone or the field is full.
+      if (f.left <= 0 || this.foliage.countActive() >= maxFoliage) {
+        this.fertilisers.splice(i, 1);
+        continue;
       }
-      f.left--;
+      f.ring++;
+      // Wider ring each tick = growth spreading outward from the death, capped
+      // by what's left of the budget.
+      const sprouts = Math.min(1 + f.ring, 4, f.left);
+      for (let s = 0; s < sprouts; s++) {
+        const a = Phaser.Math.FloatBetween(0, Math.PI * 2);
+        const d = 6 + f.ring * 10 + Phaser.Math.Between(-4, 4);
+        this.plantOne(f.x + Math.cos(a) * d, f.y + Math.sin(a) * d, false);
+      }
+      f.left -= sprouts;
       f.next = now + 300;
       if (f.left <= 0) {
         this.fertilisers.splice(i, 1);
@@ -1529,13 +1534,17 @@ export default class GameScene extends Phaser.Scene {
 
     this.spawnDeath(x, y);
     // The corpse fertilises the soil: plants will sprout outward from here.
-    this.fertilisers.push({
-      x,
-      y,
-      next: this.time.now + 350,
-      ring: 0,
-      left: Phaser.Math.Between(4, 6),
-    });
+    // `left` is the total plant budget for this death (config-driven).
+    const fertilise = this.gameManager.getFertiliserPlants();
+    if (fertilise > 0) {
+      this.fertilisers.push({
+        x,
+        y,
+        next: this.time.now + 350,
+        ring: 0,
+        left: fertilise,
+      });
+    }
     this.bloodEmitter.explode(8, x, y);
     this.pulsePlayer();
     this.flashTitle();

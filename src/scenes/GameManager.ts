@@ -39,6 +39,8 @@ export default class GameManager {
   private foliageSpawnAmount = 1;
   private foliageSpawnRateMs = 800;
   private maxFoliage = 400; // cap so the field can't grow without bound
+  // Plants sprouted outward from each creature death (fertilised soil). 0 = off.
+  private fertiliserPlants = 12;
   // Speed multiplier while a creature/hunter is on a plant cell. When the field
   // is too dense to path around, things wade straight through it slowly instead
   // of phasing across at full speed.
@@ -116,6 +118,7 @@ export default class GameManager {
       p("Plants", "foliageSpawnAmount", "Auto-spawn plants/tick (0=off)", 0, 50, 1, () => this.foliageSpawnAmount, (v) => (this.foliageSpawnAmount = v)),
       p("Plants", "foliageSpawnRateMs", "Auto-spawn interval (ms)", 100, 5000, 50, () => this.foliageSpawnRateMs, (v) => (this.foliageSpawnRateMs = v)),
       p("Plants", "maxFoliage", "Max plants on field", 50, 1500, 25, () => this.maxFoliage, (v) => (this.maxFoliage = v)),
+      p("Plants", "fertiliserPlants", "Plants per death (fertiliser)", 0, 60, 1, () => this.fertiliserPlants, (v) => (this.fertiliserPlants = v)),
 
       p("Movement", "foliageDrag", "Speed through plants (x)", 0.05, 1, 0.05, () => this.foliageDrag, (v) => (this.foliageDrag = v)),
       p("Movement", "gridStrictMovement", "Wait when blocked (no phasing)", 0, 1, 1, () => this.gridStrictMovement, (v) => (this.gridStrictMovement = v ? 1 : 0), "bool"),
@@ -191,6 +194,7 @@ export default class GameManager {
     this.foliageSpawnAmount = 1;
     this.foliageSpawnRateMs = 800;
     this.maxFoliage = 400;
+    this.fertiliserPlants = 12;
     this.foliageDrag = 0.4;
     this.gridStrictMovement = 1;
     this.maxCreatures = 999;
@@ -258,6 +262,9 @@ export default class GameManager {
   }
   public getMaxFoliage(): number {
     return this.maxFoliage;
+  }
+  public getFertiliserPlants(): number {
+    return this.fertiliserPlants;
   }
   public getFoliageDrag(): number {
     return this.foliageDrag;

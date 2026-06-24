@@ -80,9 +80,15 @@ function steer(
   const body = mover.body as Phaser.Physics.Arcade.Body;
   const hasPath = mover.path.length > 0;
 
-  // Strict grid mode: with no route through the plants, hold position and wait
-  // for a gap (grazers eat the foliage away) instead of phasing straight across.
-  if (!hasPath && GameManager.getInstance().getGridStrictMovement()) {
+  // Strict grid mode: a hunter with no route holds position and waits for a gap
+  // (grazers eat the foliage away) instead of phasing across. Creatures never
+  // wait — a fleeing or homing creature must keep moving (it falls back to a
+  // slow phase below), so creatures never stall.
+  if (
+    !hasPath &&
+    goalKey === "chase" &&
+    GameManager.getInstance().getGridStrictMovement()
+  ) {
     body.setVelocity(0, 0);
     return;
   }
@@ -121,6 +127,12 @@ export class Creature extends Phaser.Physics.Arcade.Sprite {
   private nearestHunter: Hunter | null = null;
   private targetFoliage: Foliage | null = null;
   private nextThink = 0;
+  // Stuck watchdog: if a creature makes no headway for too long (e.g. parked by
+  // a plant another creature already claimed), it re-picks a target so it never
+  // sits idle.
+  private stuckSince = 0;
+  private stuckX = 0;
+  private stuckY = 0;
   // movement state read/written by steer()
   public path: Waypoint[] = [];
   public repathAt = 0;
@@ -183,6 +195,37 @@ export class Creature extends Phaser.Physics.Arcade.Sprite {
       // first — pick a fresh, unclaimed one now so the flock spreads out instead
       // of stacking on a single plant.
       this.targetFoliage = this.pickFoliage(gameScene);
+    }
+
+    // Stuck watchdog. A bite legitimately holds the creature still, so the timer
+    // only runs when it isn't eating. If it has made no real headway for a while
+    // (parked next to a plant another creature claimed, or inching toward one too
+    // far off), force a fresh target — preferring a different unclaimed plant —
+    // so a creature never sits idle.
+    if (this.isEating) {
+      this.stuckSince = now;
+      this.stuckX = this.x;
+      this.stuckY = this.y;
+    } else if (
+      Phaser.Math.Distance.Between(this.x, this.y, this.stuckX, this.stuckY) > 8
+    ) {
+      this.stuckSince = now;
+      this.stuckX = this.x;
+      this.stuckY = this.y;
+    } else if (now - this.stuckSince > 1000) {
+      // Head for a different unclaimed plant; if there genuinely isn't one, drop
+      // the target so the creature drifts home instead of sitting forever.
+      const current = this.targetFoliage;
+      this.targetFoliage =
+        getNearestEntity<Foliage>(
+          gameScene.foliage,
+          this,
+          (f) => f.active && !f.claimed && f !== current
+        ) ?? null;
+      this.nextThink = now + 130 + Phaser.Math.Between(0, 90);
+      this.stuckSince = now;
+      this.stuckX = this.x;
+      this.stuckY = this.y;
     }
 
     // Threat check runs every frame and overrides everything else.
